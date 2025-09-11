@@ -20,7 +20,7 @@ const NewsCarousel: React.FC<NewsCarouselProps> = ({ title, articles, isLoading 
             <h2 className="text-2xl font-bold text-orange-400 mb-4 border-b-2 border-orange-400/30 pb-2">
                 {title}
             </h2>
-            <div className="flex overflow-x-auto space-x-6 pb-4 -mx-4 px-4 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-800/50">
+            <div className="flex overflow-x-auto space-x-6 pb-4 ltr:-mx-4 ltr:px-4 rtl:-mx-4 rtl:px-4 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-800/50">
                 {isLoading ? (
                     Array.from({ length: 5 }).map((_, index) => <ArticleCardSkeleton key={index} />)
                 ) : (

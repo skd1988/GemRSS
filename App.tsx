@@ -11,12 +11,14 @@ import ArticleCard from './components/ArticleCard';
 import SettingsModal from './components/SettingsModal';
 import { summarizeAndCategorize } from './services/geminiService';
 import { CategorizedArticles, InoreaderArticle, InoreaderCredentials } from './types';
+import { useLanguage } from './hooks/useLanguage';
 
 export const REDIRECT_URI = 'http://localhost:8999/callback';
 
 function App() {
+  const { language, t } = useLanguage();
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState("Summarizing articles... this may take a moment.");
+  const [loadingMessage, setLoadingMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [articles, setArticles] = useState<CategorizedArticles | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -29,12 +31,12 @@ function App() {
 
   const exchangeCodeForToken = async (code: string) => {
     setIsLoading(true);
-    setLoadingMessage("Authenticating with Inoreader...");
+    setLoadingMessage(t('app.authMessage'));
     setError(null);
 
     const savedCredsString = localStorage.getItem('inoreader_temp_credentials');
     if (!savedCredsString) {
-      setError("Authentication failed: Could not find temporary credentials. Please generate the authentication link again.");
+      setError(t('app.inoreaderCredsError'));
       setIsLoading(false);
       return;
     }
@@ -70,7 +72,7 @@ function App() {
 
     } catch (e) {
         const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-        setError(`Inoreader authentication failed: ${errorMessage}`);
+        setError(t('app.inoreaderAuthFailed', { error: errorMessage }));
     } finally {
         setIsLoading(false);
     }
@@ -99,7 +101,7 @@ function App() {
         localStorage.removeItem('inoreader_oauth_state');
         
         if (state !== storedState) {
-          setError("Authentication failed: State mismatch. Please try generating the auth link again.");
+          setError(t('app.authFailed', { error: "State mismatch. Please try generating the auth link again." }));
           return;
         }
         await exchangeCodeForToken(code);
@@ -107,18 +109,18 @@ function App() {
       } else if (errorParam) {
         window.history.replaceState({}, document.title, window.location.pathname);
         const errorDescription = urlParams.get('error_description');
-        setError(`Inoreader authentication failed: ${errorParam} - ${errorDescription || 'No description provided.'}`);
+        setError(t('app.inoreaderAuthFailed', { error: `${errorParam} - ${errorDescription || 'No description provided.'}` }));
         localStorage.removeItem('inoreader_oauth_state');
       }
     };
 
     handleOAuthCallback();
-  }, []);
+  }, [t]);
 
   const handleRedirectUrlSubmit = async (url: string) => {
     setError(null);
     if (!url.trim()){
-        setError("Please paste the full URL from the page you were redirected to.");
+        setError(t('settingsModal.pasteRedirectPrompt'));
         return;
     }
 
@@ -137,19 +139,19 @@ function App() {
       localStorage.removeItem('inoreader_oauth_state');
 
       if (!state || state !== storedState) {
-        throw new Error("Authentication failed: State mismatch. This could indicate a security issue. Please try generating the authentication link again.");
+        throw new Error("State mismatch. This could indicate a security issue. Please try generating the authentication link again.");
       }
 
       if (!code) {
-        throw new Error("Authentication failed: Could not find the authorization code in the provided URL.");
+        throw new Error("Could not find the authorization code in the provided URL.");
       }
 
       await exchangeCodeForToken(code);
 
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred while parsing the redirect URL.';
-      setError(`An error occurred: ${errorMessage}`);
-      localStorage.removeItem('inoreader_oauth_state'); // Ensure cleanup on error
+      setError(t('app.summarizeError', { error: errorMessage }));
+      localStorage.removeItem('inoreader_oauth_state');
     }
   };
   
@@ -231,43 +233,61 @@ function App() {
     return `<rss><channel>${feedContent}</channel></rss>`;
   };
 
-  const handleSummarize = async (url: string) => {
+  const handleSummarize = async (urls: string[]) => {
     setIsLoading(true);
     setError(null);
     setArticles(null);
-    setLoadingMessage("Summarizing articles... this may take a moment.");
+    setLoadingMessage(t('app.loadingMessage'));
 
     try {
-      let rssContent = '';
       const hasAllCredentials = inoreaderCredentials && inoreaderCredentials.token && inoreaderCredentials.clientId && inoreaderCredentials.clientSecret;
-
-      if (url.includes('inoreader.com') && hasAllCredentials) {
-        rssContent = await fetchInoreaderFeed(url, inoreaderCredentials);
-      } else {
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-        const rssResponse = await fetch(proxyUrl);
-        
-        if (!rssResponse.ok) {
-           if (url.includes('inoreader.com')) {
-            throw new Error(`Failed to fetch Inoreader feed. This might be a private feed requiring full credentials. Please add your Token, Client ID, and Client Secret in Settings. Status: ${rssResponse.status}`);
-          }
-          throw new Error(`Failed to fetch RSS feed. Status: ${rssResponse.status}`);
+      
+      const feedPromises = urls.map(url => {
+        if (url.includes('inoreader.com') && hasAllCredentials) {
+          return fetchInoreaderFeed(url, inoreaderCredentials)
+            .catch(err => {
+              console.error(`Error fetching authenticated Inoreader feed: ${url}`, err);
+              return null;
+            });
+        } else {
+          return fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`)
+            .then(res => {
+                if (!res.ok) {
+                    console.warn(`Failed to fetch feed: ${url}. Status: ${res.status}`);
+                    if (url.includes('inoreader.com')) {
+                        console.warn(`Hint: The above Inoreader feed might be private. Add full credentials in Settings to access it.`);
+                    }
+                    return null;
+                }
+                return res.text();
+            })
+            .catch(err => {
+                console.error(`Network error fetching feed: ${url}`, err);
+                return null;
+            });
         }
-        
-        rssContent = await rssResponse.text();
+      });
+
+      const feedsResults = await Promise.all(feedPromises);
+      const successfulFeeds = feedsResults.filter((content): content is string => content !== null && content.trim() !== '');
+      
+      if (successfulFeeds.length === 0) {
+          throw new Error(t('app.allFeedsFetchError'));
+      }
+      
+      const allFeedsContent = successfulFeeds.join('\n\n---SEPARATOR---\n\n');
+
+      if (!allFeedsContent.trim()) {
+        throw new Error(t('app.emptyFeedError'));
       }
 
-      if (!rssContent.trim()) {
-        throw new Error('Feed is empty or could not be read.');
-      }
-
-      const categorizedArticles = await summarizeAndCategorize(rssContent);
+      const categorizedArticles = await summarizeAndCategorize(allFeedsContent, language);
       setArticles(categorizedArticles);
 
     } catch (e) {
       console.error(e);
       const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-      setError(`An error occurred: ${errorMessage}`);
+      setError(t('app.summarizeError', { error: errorMessage }));
     } finally {
       setIsLoading(false);
     }
@@ -277,7 +297,7 @@ function App() {
     setIsLoading(true);
     setError(null);
     setArticles(null);
-    setLoadingMessage("Summarizing articles... this may take a moment.");
+    setLoadingMessage(t('app.loadingMessage'));
 
     try {
         const opmlContent = await file.text();
@@ -322,17 +342,17 @@ function App() {
         const successfulFeeds = feedsResults.filter((content): content is string => content !== null && content.trim() !== '');
         
         if (successfulFeeds.length === 0) {
-            throw new Error("Could not fetch any of the feeds from the OPML file. This may be due to failed requests or private Inoreader feeds requiring credentials.");
+            throw new Error(t('app.opmlFetchError'));
         }
         
         const allFeedsContent = successfulFeeds.join('\n\n---SEPARATOR---\n\n');
-        const categorizedArticles = await summarizeAndCategorize(allFeedsContent);
+        const categorizedArticles = await summarizeAndCategorize(allFeedsContent, language);
         setArticles(categorizedArticles);
 
     } catch (e) {
         console.error(e);
         const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-        setError(`An error occurred while processing the OPML file: ${errorMessage}`);
+        setError(t('app.opmlParseError', { error: errorMessage }));
     } finally {
         setIsLoading(false);
     }
@@ -353,7 +373,7 @@ function App() {
     if (error) {
       return (
         <div className="text-center mt-12 bg-red-900/50 border border-red-700 text-red-300 p-6 rounded-lg max-w-2xl mx-auto">
-          <h2 className="text-xl font-bold mb-2">Error</h2>
+          <h2 className="text-xl font-bold mb-2">{t('app.error')}</h2>
           <p>{error}</p>
         </div>
       );
@@ -362,7 +382,7 @@ function App() {
     if (articles) {
       const categories = Object.keys(articles);
       if (categories.length === 0) {
-        return <p className="text-center text-gray-400 mt-12">No articles could be summarized from this feed.</p>
+        return <p className="text-center text-gray-400 mt-12">{t('app.noArticles')}</p>
       }
       return (
         <div className="w-full max-w-7xl mx-auto flex flex-col gap-12 animate-fade-in">
