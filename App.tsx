@@ -5,24 +5,40 @@
 
 import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
-import StartScreen from './components/StartScreen';
 import Spinner from './components/Spinner';
-import ArticleCard from './components/ArticleCard';
 import SettingsModal from './components/SettingsModal';
-import { summarizeAndCategorize } from './services/geminiService';
-import { CategorizedArticles, InoreaderArticle, InoreaderCredentials } from './types';
+import NewsDashboard from './components/NewsDashboard';
+import { summarizeAndCategorize, startChatSession, sendMessageToChat } from './services/geminiService';
+// FIX: Import `InoreaderArticle` type.
+import { CategorizedArticles, InoreaderCredentials, ChatMessage, CachedData, InoreaderArticle } from './types';
 import { useLanguage } from './hooks/useLanguage';
 
 export const REDIRECT_URI = 'http://localhost:8999/callback';
 
+// Predefined list of RSS feeds
+const PREDEFINED_FEEDS = [
+  'https://www.inoreader.com/stream/user/1003884159/tag/%D8%A7%D9%81%D8%B1%DB%8C%D9%82%D8%A7',
+  'https://www.inoreader.com/stream/user/1003884159/tag/%D9%84%D8%A8%D9%86%D8%A7%D9%86',
+  'https://www.inoreader.com/stream/user/1003884159/tag/%D8%B9%D8%B1%D8%A8%D8%B3%D8%AA%D8%A7%D9%86',
+  'https://www.inoreader.com/stream/user/1003884159/tag/%D8%B9%D8%B1%D8%A7%D9%82',
+  'https://www.inoreader.com/stream/user/1003884159/tag/%D8%B9%D8%A8%D8%B1%DB%8C',
+  'https://www.inoreader.com/stream/user/1003884159/tag/%D8%B3%D9%88%D8%B1%DB%8C%D9%87',
+  'https://www.inoreader.com/stream/user/1003884159/tag/%D8%AE%D8%A8%D8%B1%20%DA%AF%D8%B2%D8%A7%D8%B1%DB%8C%20%D9%87%D8%A7%DB%8C%20%D8%A8%DB%8C%D9%86%20%D8%A7%D9%84%D9%85%D9%84%D9%84%DB%8C',
+  'https://www.inoreader.com/stream/user/1003884159/tag/%D8%A7%D9%86%D8%AF%DB%8C%D8%B4%DA%A9%D8%AF%D9%87%20%D9%87%D8%A7'
+];
+const CACHE_KEY = 'news_cache_data';
+const CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutes
+
 function App() {
   const { language, t } = useLanguage();
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [loadingMessage, setLoadingMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [articles, setArticles] = useState<CategorizedArticles | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [inoreaderCredentials, setInoreaderCredentials] = useState<InoreaderCredentials | null>(null);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   const handleSaveInoreaderCredentials = (credentials: InoreaderCredentials) => {
     localStorage.setItem('inoreader_credentials', JSON.stringify(credentials));
@@ -47,9 +63,7 @@ function App() {
       const tokenUrl = `https://corsproxy.io/?https://www.inoreader.com/oauth2/token`;
       const response = await fetch(tokenUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
           code: code,
           client_id: clientId,
@@ -65,10 +79,11 @@ function App() {
         throw new Error(data.error_description || data.error || `Failed to exchange code for token. Status: ${response.status}`);
       }
       
-      const newCredentials = { token: data.access_token, clientId, clientSecret };
+      const expiresAt = Date.now() + ((data.expires_in || 3600) * 1000); // Default to 1 hour
+      const newCredentials = { token: data.access_token, refreshToken: data.refresh_token, expiresAt, clientId, clientSecret };
       handleSaveInoreaderCredentials(newCredentials);
-      localStorage.removeItem('inoreader_temp_credentials'); // Clean up on success
-      setIsSettingsModalOpen(true); // Re-open settings to show success
+      localStorage.removeItem('inoreader_temp_credentials');
+      setIsSettingsModalOpen(true);
 
     } catch (e) {
         const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
@@ -77,46 +92,7 @@ function App() {
         setIsLoading(false);
     }
   };
-
-  useEffect(() => {
-    const savedCreds = localStorage.getItem('inoreader_credentials');
-    if (savedCreds) {
-      try {
-        setInoreaderCredentials(JSON.parse(savedCreds));
-      } catch (e) {
-        console.error("Failed to parse Inoreader credentials from localStorage", e);
-        localStorage.removeItem('inoreader_credentials');
-      }
-    }
-
-    const handleOAuthCallback = async () => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const code = urlParams.get('code');
-      const state = urlParams.get('state');
-      const errorParam = urlParams.get('error');
-
-      if (code && state) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        const storedState = localStorage.getItem('inoreader_oauth_state');
-        localStorage.removeItem('inoreader_oauth_state');
-        
-        if (state !== storedState) {
-          setError(t('app.authFailed', { error: "State mismatch. Please try generating the auth link again." }));
-          return;
-        }
-        await exchangeCodeForToken(code);
-
-      } else if (errorParam) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        const errorDescription = urlParams.get('error_description');
-        setError(t('app.inoreaderAuthFailed', { error: `${errorParam} - ${errorDescription || 'No description provided.'}` }));
-        localStorage.removeItem('inoreader_oauth_state');
-      }
-    };
-
-    handleOAuthCallback();
-  }, [t]);
-
+  
   const handleRedirectUrlSubmit = async (url: string) => {
     setError(null);
     if (!url.trim()){
@@ -167,31 +143,21 @@ function App() {
         try {
             const urlObj = new URL(inoreaderUrl);
             const path = urlObj.pathname;
-
             const apiMatch = path.match(/\/reader\/api\/0\/stream\/contents\/(.*)/);
             if (apiMatch && apiMatch[1]) return decodeURIComponent(apiMatch[1]);
-            
             const streamMatch = path.match(/^\/stream\/(.*)/);
             if (streamMatch && streamMatch[1]) return decodeURIComponent(streamMatch[1]);
-            
             if (path.endsWith('/all_articles')) return 'user/-/state/com.google/reading-list';
-            
             const folderMatch = path.match(/^\/(?:folder|tag)\/(.*)/);
             if (folderMatch && folderMatch[1]) return `user/-/label/${decodeURIComponent(folderMatch[1])}`;
-            
             const feedMatch = path.match(/^\/feed\/(.*)/);
             if (feedMatch && feedMatch[1]) return `feed/${decodeURIComponent(feedMatch[1])}`;
-
-        } catch(e) {
-            console.error("Could not parse Inoreader URL:", inoreaderUrl, e);
-        }
-        
-        throw new Error('Invalid or unsupported Inoreader URL format. Could not determine stream ID. Supported formats include URLs for "All Articles", Folders, Tags, or specific Feeds.');
+        } catch(e) { console.error("Could not parse Inoreader URL:", inoreaderUrl, e); }
+        throw new Error('Invalid or unsupported Inoreader URL format.');
     };
 
     const streamId = getStreamId(url);
     const encodedStreamId = encodeURIComponent(streamId);
-    
     const apiUrl = `https://corsproxy.io/?https://www.inoreader.com/reader/api/0/stream/contents/${encodedStreamId}?n=50`;
 
     const response = await fetch(apiUrl, {
@@ -203,158 +169,219 @@ function App() {
     });
 
     if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem('inoreader_credentials');
-        setInoreaderCredentials(null);
-        throw new Error(`Inoreader authentication failed (Status ${response.status}). Your credentials (Token, Client ID, or Client Secret) may be invalid or expired. Please check them in Settings.`);
+        const authError = new Error(`Inoreader authentication failed (Status ${response.status}).`);
+        authError.name = 'InoreaderAuthError';
+        throw authError;
     }
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch Inoreader feed. Status: ${response.status}`);
-    }
-
+    if (!response.ok) throw new Error(`Failed to fetch Inoreader feed. Status: ${response.status}`);
     const data = await response.json();
-
-    if (!data || !Array.isArray(data.items)) {
-        throw new Error('Inoreader API returned an unexpected response format. The feed might be empty or there was an issue with the request.');
-    }
+    if (!data || !Array.isArray(data.items)) throw new Error('Inoreader API returned an unexpected response format.');
     
     const feedContent = data.items.map((item: InoreaderArticle) => {
         const summaryText = new DOMParser().parseFromString(item.summary.content, 'text/html').body.textContent || '';
         const link = item.canonical?.[0]?.href || '#';
-        return `
-<item>
-  <title><![CDATA[${item.title}]]></title>
-  <link>${link}</link>
-  <description><![CDATA[${summaryText}]]></description>
-</item>
-        `.trim();
+        return `<item><title><![CDATA[${item.title}]]></title><link>${link}</link><description><![CDATA[${summaryText}]]></description></item>`.trim();
     }).join('\n');
     
     return `<rss><channel>${feedContent}</channel></rss>`;
   };
 
-  const handleSummarize = async (urls: string[]) => {
-    setIsLoading(true);
-    setError(null);
-    setArticles(null);
-    setLoadingMessage(t('app.loadingMessage'));
+  const refreshToken = async (creds: InoreaderCredentials): Promise<InoreaderCredentials> => {
+    if (!creds.refreshToken) {
+      handleClearInoreaderCredentials();
+      throw new Error(t('app.sessionExpired'));
+    }
 
+    setLoadingMessage(t('app.refreshTokenMessage'));
     try {
-      const hasAllCredentials = inoreaderCredentials && inoreaderCredentials.token && inoreaderCredentials.clientId && inoreaderCredentials.clientSecret;
-      
-      const feedPromises = urls.map(url => {
-        if (url.includes('inoreader.com') && hasAllCredentials) {
-          return fetchInoreaderFeed(url, inoreaderCredentials)
-            .catch(err => {
-              console.error(`Error fetching authenticated Inoreader feed: ${url}`, err);
-              return null;
-            });
-        } else {
-          return fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`)
-            .then(res => {
-                if (!res.ok) {
-                    console.warn(`Failed to fetch feed: ${url}. Status: ${res.status}`);
-                    if (url.includes('inoreader.com')) {
-                        console.warn(`Hint: The above Inoreader feed might be private. Add full credentials in Settings to access it.`);
-                    }
-                    return null;
-                }
-                return res.text();
-            })
-            .catch(err => {
-                console.error(`Network error fetching feed: ${url}`, err);
-                return null;
-            });
-        }
+      const tokenUrl = `https://corsproxy.io/?https://www.inoreader.com/oauth2/token`;
+      const response = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: creds.clientId,
+          client_secret: creds.clientSecret,
+          refresh_token: creds.refreshToken,
+          grant_type: 'refresh_token',
+        }),
       });
 
-      const feedsResults = await Promise.all(feedPromises);
-      const successfulFeeds = feedsResults.filter((content): content is string => content !== null && content.trim() !== '');
+      const data = await response.json();
+
+      if (!response.ok || data.error) {
+        throw new Error(data.error_description || data.error || `Failed to refresh token. Status: ${response.status}`);
+      }
+
+      const newCredentials: InoreaderCredentials = {
+        ...creds,
+        token: data.access_token,
+        refreshToken: data.refresh_token || creds.refreshToken,
+        expiresAt: Date.now() + ((data.expires_in || 3600) * 1000),
+      };
       
-      if (successfulFeeds.length === 0) {
-          throw new Error(t('app.allFeedsFetchError'));
+      handleSaveInoreaderCredentials(newCredentials);
+      return newCredentials;
+
+    } catch (e) {
+      handleClearInoreaderCredentials();
+      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+      throw new Error(t('app.refreshTokenError', { error: errorMessage }));
+    }
+  };
+
+  const loadAndSummarizeNews = async () => {
+    setIsLoading(true);
+    setError(null);
+    setChatHistory([]);
+    setLoadingMessage(t('app.loadingMessage'));
+    
+    try {
+      let currentCreds = inoreaderCredentials;
+      if (!currentCreds || !currentCreds.token) {
+        throw new Error(t('app.inoreaderCredsNeeded'));
+      }
+
+      // Proactive refresh if token is expired based on timestamp
+      if (currentCreds.expiresAt && currentCreds.expiresAt < Date.now()) {
+        currentCreds = await refreshToken(currentCreds);
+      }
+
+      const successfulFeeds: string[] = [];
+      
+      for (const url of PREDEFINED_FEEDS) {
+          try {
+              let feedContent = await fetchInoreaderFeed(url, currentCreds);
+              successfulFeeds.push(feedContent);
+          } catch (error) {
+              if (error instanceof Error && error.name === 'InoreaderAuthError') {
+                  console.warn(`Auth error for ${url}, attempting token refresh...`);
+                  try {
+                      currentCreds = await refreshToken(currentCreds);
+                      // Retry fetching the same feed with the new token
+                      let feedContent = await fetchInoreaderFeed(url, currentCreds);
+                      successfulFeeds.push(feedContent);
+                      console.log(`Successfully fetched ${url} after token refresh.`);
+                  } catch (refreshError) {
+                      console.error(`Failed to refresh token after auth error for ${url}:`, refreshError);
+                      // If refresh fails, we can't continue. Throw the refresh error.
+                      throw refreshError; 
+                  }
+              } else {
+                  // For other non-auth errors, log it and continue to the next feed
+                  console.error(`Failed to fetch feed ${url}:`, error);
+              }
+          }
       }
       
+      if (successfulFeeds.length === 0) {
+        throw new Error(t('app.allFeedsFetchError'));
+      }
+      
+      setLoadingMessage(t('app.loadingMessage')); // Reset message after potential refresh
       const allFeedsContent = successfulFeeds.join('\n\n---SEPARATOR---\n\n');
-
       if (!allFeedsContent.trim()) {
         throw new Error(t('app.emptyFeedError'));
       }
-
+      
       const categorizedArticles = await summarizeAndCategorize(allFeedsContent, language);
       setArticles(categorizedArticles);
+      
+      const cacheData: CachedData = { articles: categorizedArticles, timestamp: Date.now() };
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+      
+      setIsChatLoading(true);
+      const initialBotMessage = await startChatSession(categorizedArticles, language);
+      setChatHistory([{ role: 'model', content: initialBotMessage }]);
 
     } catch (e) {
       console.error(e);
       const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
       setError(t('app.summarizeError', { error: errorMessage }));
+      localStorage.removeItem(CACHE_KEY); // Clear cache on error
     } finally {
       setIsLoading(false);
+      setIsChatLoading(false);
     }
-  };
+  }
 
-  const handleSummarizeOpml = async (file: File) => {
-    setIsLoading(true);
-    setError(null);
-    setArticles(null);
-    setLoadingMessage(t('app.loadingMessage'));
+  useEffect(() => {
+    const savedCreds = localStorage.getItem('inoreader_credentials');
+    if (savedCreds) {
+      try {
+        setInoreaderCredentials(JSON.parse(savedCreds));
+      } catch (e) {
+        console.error("Failed to parse Inoreader credentials from localStorage", e);
+        localStorage.removeItem('inoreader_credentials');
+      }
+    }
+
+    const handleOAuthCallback = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      if (code) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        const storedState = localStorage.getItem('inoreader_oauth_state');
+        localStorage.removeItem('inoreader_oauth_state');
+        const state = urlParams.get('state');
+        if (state !== storedState) {
+          setError(t('app.authFailed', { error: "State mismatch." }));
+          return;
+        }
+        await exchangeCodeForToken(code);
+      }
+    };
+    handleOAuthCallback();
+  }, [t]);
+
+  useEffect(() => {
+    if (!inoreaderCredentials) {
+        setLoadingMessage(t('app.inoreaderCredsNeeded'));
+        setIsLoading(false); // Stop loading to show the message
+        return;
+    }
+    
+    const cachedDataString = localStorage.getItem(CACHE_KEY);
+    if (cachedDataString) {
+      try {
+        const cachedData: CachedData = JSON.parse(cachedDataString);
+        if (Date.now() - cachedData.timestamp < CACHE_DURATION_MS) {
+          // Cache is fresh, load it
+          setArticles(cachedData.articles);
+          setIsLoading(false);
+          setIsChatLoading(true);
+          startChatSession(cachedData.articles, language)
+            .then(initialBotMessage => {
+                setChatHistory([{ role: 'model', content: initialBotMessage }]);
+            })
+            .catch(e => setError(t('app.chatError', { error: e.message })))
+            .finally(() => setIsChatLoading(false));
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to parse cached data", e);
+        localStorage.removeItem(CACHE_KEY);
+      }
+    }
+
+    // No fresh cache, fetch new data
+    loadAndSummarizeNews();
+  }, [inoreaderCredentials, language, t]);
+
+  const handleSendMessage = async (message: string) => {
+    const newUserMessage: ChatMessage = { role: 'user', content: message };
+    setChatHistory(prev => [...prev, newUserMessage]);
+    setIsChatLoading(true);
 
     try {
-        const opmlContent = await file.text();
-        const parser = new DOMParser();
-        const opmlDoc = parser.parseFromString(opmlContent, 'text/xml');
-        
-        const outlines = opmlDoc.querySelectorAll('outline[xmlUrl]');
-        const urls = Array.from(outlines).map(outline => outline.getAttribute('xmlUrl')).filter((url): url is string => url !== null);
-
-        if (urls.length === 0) {
-            throw new Error('No valid RSS feed URLs found in the OPML file.');
-        }
-
-        const hasAllCredentials = inoreaderCredentials && inoreaderCredentials.token && inoreaderCredentials.clientId && inoreaderCredentials.clientSecret;
-        const feedPromises = urls.map(url => {
-          if (url.includes('inoreader.com') && hasAllCredentials) {
-            return fetchInoreaderFeed(url, inoreaderCredentials)
-              .catch(err => {
-                console.error(`Error fetching authenticated Inoreader feed from OPML: ${url}`, err);
-                return null;
-              });
-          } else {
-            return fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`)
-              .then(res => {
-                  if (!res.ok) {
-                      console.warn(`Failed to fetch feed from OPML: ${url}. Status: ${res.status}`);
-                      if (url.includes('inoreader.com')) {
-                          console.warn(`Hint: The above Inoreader feed might be private. Add full credentials in Settings to access it.`);
-                      }
-                      return null;
-                  }
-                  return res.text();
-              })
-              .catch(err => {
-                  console.error(`Network error fetching feed from OPML: ${url}`, err);
-                  return null;
-              });
-          }
-        });
-
-        const feedsResults = await Promise.all(feedPromises);
-        const successfulFeeds = feedsResults.filter((content): content is string => content !== null && content.trim() !== '');
-        
-        if (successfulFeeds.length === 0) {
-            throw new Error(t('app.opmlFetchError'));
-        }
-        
-        const allFeedsContent = successfulFeeds.join('\n\n---SEPARATOR---\n\n');
-        const categorizedArticles = await summarizeAndCategorize(allFeedsContent, language);
-        setArticles(categorizedArticles);
-
+      const botResponse = await sendMessageToChat(message);
+      const newBotMessage: ChatMessage = { role: 'model', content: botResponse };
+      setChatHistory(prev => [...prev, newBotMessage]);
     } catch (e) {
-        console.error(e);
-        const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-        setError(t('app.opmlParseError', { error: errorMessage }));
+      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+      const errorBotMessage: ChatMessage = { role: 'model', content: t('app.chatError', { error: errorMessage }) };
+      setChatHistory(prev => [...prev, errorBotMessage]);
     } finally {
-        setIsLoading(false);
+      setIsChatLoading(false);
     }
   };
 
@@ -363,13 +390,11 @@ function App() {
       return (
         <div className="flex flex-col items-center justify-center gap-4 text-center mt-12">
           <Spinner />
-          <p className="text-gray-300 text-lg animate-pulse">
-            {loadingMessage}
-          </p>
+          <p className="text-gray-300 text-lg animate-pulse">{loadingMessage}</p>
         </div>
       );
     }
-
+    
     if (error) {
       return (
         <div className="text-center mt-12 bg-red-900/50 border border-red-700 text-red-300 p-6 rounded-lg max-w-2xl mx-auto">
@@ -378,31 +403,24 @@ function App() {
         </div>
       );
     }
-    
-    if (articles) {
-      const categories = Object.keys(articles);
-      if (categories.length === 0) {
-        return <p className="text-center text-gray-400 mt-12">{t('app.noArticles')}</p>
-      }
-      return (
-        <div className="w-full max-w-7xl mx-auto flex flex-col gap-12 animate-fade-in">
-          {categories.map((category) => (
-            <section key={category}>
-              <h2 className="text-3xl font-bold text-orange-400 mb-6 border-b-2 border-orange-400/30 pb-2">
-                {category}
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {articles[category].map((article) => (
-                  <ArticleCard key={article.url} article={article} />
-                ))}
-              </div>
-            </section>
-          ))}
+
+    if (!inoreaderCredentials) {
+       return (
+        <div className="text-center mt-12 bg-yellow-900/50 border border-yellow-700 text-yellow-300 p-6 rounded-lg max-w-2xl mx-auto">
+          <h2 className="text-xl font-bold mb-2">{t('app.inoreaderCredsNeededTitle')}</h2>
+          <p>{t('app.inoreaderCredsNeeded')}</p>
         </div>
       );
     }
-
-    return <StartScreen onSummarize={handleSummarize} onSummarizeOpml={handleSummarizeOpml} isLoading={isLoading} />;
+    
+    return (
+      <NewsDashboard
+          articles={articles || {}}
+          chatMessages={chatHistory}
+          isChatLoading={isChatLoading}
+          onSendMessage={handleSendMessage}
+      />
+    );
   };
 
   return (

@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { Article, CategorizedArticles, GeopoliticalNews, Language } from '../types';
+import { GoogleGenAI, Type, Chat } from "@google/genai";
+import { Article, CategorizedArticles, Language } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+let chat: Chat | null = null;
 
 const MAX_INPUT_LENGTH = 250000; // Limit input size to prevent request payload errors.
 
@@ -79,105 +80,53 @@ ${truncatedContent}
   return categorized;
 }
 
-
-/**
- * Processes and categorizes geopolitical news from multiple RSS feeds.
- * @param feedsContent The combined string content of multiple RSS feeds.
- * @param language The target language for the output.
- * @returns A promise that resolves to a structured object of geopolitical news.
- */
-export async function processGeopoliticalFeeds(feedsContent: string, language: Language): Promise<GeopoliticalNews> {
-  const model = 'gemini-2.5-flash';
-
-  const truncatedContent = feedsContent.length > MAX_INPUT_LENGTH
-    ? feedsContent.substring(0, MAX_INPUT_LENGTH)
-    : feedsContent;
-  
-  const { name: langName, nativeName: langNativeName } = langInstructions[language];
-
-  const prompt = `You are a geopolitical news analyst specializing in the Middle East. You will be given a collection of RSS feed articles. Your task is to analyze and categorize these articles into the following groups, with all text output in ${langName}:
-1.  **supporters_of_resistance**: News related to groups and countries generally considered part of the "Axis of Resistance".
-2.  **opponents_of_resistance**: News related to groups and countries generally considered opponents of the "Axis of Resistance".
-3.  **countries**: News that is primarily about a specific country's internal affairs or general news. Group these by the country name in ${langName}.
-
-For each article, provide:
-- The original article title.
-- A concise, unbiased summary in ${langName} (2-3 sentences).
-- The original article URL.
-- A relevant image URL from the article content. If none is found, this should be null.
-- The category name (must be 'supporters_of_resistance', 'opponents_of_resistance', or the country name in ${langName}).
-
-Limit the results to a maximum of 5 most important articles per category.
-Return the result as a single JSON object conforming to the schema. Your response should only contain the JSON.
-
-RSS Content:
-${truncatedContent}
-`;
-
-  const response = await ai.models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          supporters_of_resistance: {
-            type: Type.ARRAY,
-            description: `News related to groups and countries supporting the "Axis of Resistance".`,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING, description: "Article title." },
-                summary: { type: Type.STRING, description: `Article summary in ${langName}.` },
-                url: { type: Type.STRING, description: "Article URL." },
-                imageUrl: { type: Type.STRING, description: "Image URL. Can be null." },
-                category: { type: Type.STRING, description: "Must be 'supporters_of_resistance'." }
-              }
-            }
-          },
-          opponents_of_resistance: {
-            type: Type.ARRAY,
-            description: `News related to groups and countries opposing the "Axis of Resistance".`,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING, description: "Article title." },
-                summary: { type: Type.STRING, description: `Article summary in ${langName}.` },
-                url: { type: Type.STRING, description: "Article URL." },
-                imageUrl: { type: Type.STRING, description: "Image URL. Can be null." },
-                category: { type: Type.STRING, description: "Must be 'opponents_of_resistance'." }
-              }
-            }
-          },
-          countries: {
-            type: Type.ARRAY,
-            description: `News grouped by specific countries.`,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                countryName: { type: Type.STRING, description: `The name of the country in ${langName}.` },
-                articles: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      title: { type: Type.STRING, description: "Article title." },
-                      summary: { type: Type.STRING, description: `Article summary in ${langName}.` },
-                      url: { type: Type.STRING, description: "Article URL." },
-                      imageUrl: { type: Type.STRING, description: "Image URL. Can be null." },
-                      category: { type: Type.STRING, description: `Must be the country name in ${langName}.` }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+function formatArticlesForContext(articles: CategorizedArticles): string {
+  let context = "Here are the news articles:\n\n";
+  for (const category in articles) {
+    context += `## Category: ${category}\n\n`;
+    for (const article of articles[category]) {
+      context += `### Title: ${article.title}\n`;
+      context += `Summary: ${article.summary}\n`;
+      context += `URL: ${article.url}\n\n`;
     }
+  }
+  return context;
+}
+
+export async function startChatSession(articles: CategorizedArticles, language: Language): Promise<string> {
+  const model = 'gemini-2.5-flash';
+  const { name: langName } = langInstructions[language];
+  const articlesContext = formatArticlesForContext(articles);
+
+  const systemInstruction = `You are a helpful and friendly news assistant. Your knowledge is strictly limited to the news articles provided in the context.
+- Answer user questions based *only* on the information in the articles.
+- Do not make up information or answer questions about topics not covered in the articles.
+- If you don't know the answer, say that the information is not available in the provided articles.
+- Keep your answers concise and to the point.
+- All your responses must be in ${langName}.`;
+
+  chat = ai.chats.create({
+    model,
+    config: {
+      systemInstruction,
+    },
+    history: [
+      { role: 'user', parts: [{ text: articlesContext }] },
+      { role: 'model', parts: [{ text: `Understood. I have read the provided articles and will only answer questions based on their content. I will respond in ${langName}.` }] }
+    ],
   });
 
-  const jsonString = response.text;
-  return JSON.parse(jsonString);
+  const greetingMessage = language === 'fa' 
+    ? "سلام! من مقالات را خوانده‌ام. چگونه می‌توانم به شما در درک اخبار امروز کمک کنم؟" 
+    : "Hello! I've read the articles. How can I help you understand today's news?";
+  
+  return greetingMessage;
+}
+
+export async function sendMessageToChat(message: string): Promise<string> {
+    if (!chat) {
+        throw new Error("Chat session not started. Please summarize feeds first.");
+    }
+    const response = await chat.sendMessage({ message });
+    return response.text;
 }

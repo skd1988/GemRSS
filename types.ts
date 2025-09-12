@@ -17,21 +17,9 @@ export interface Article {
   url: string;
   category: string;
   imageUrl: string | null;
-  isNew?: boolean;
 }
 
 export type CategorizedArticles = Record<string, Article[]>;
-
-export interface CountryNews {
-    countryName: string;
-    articles: Article[];
-}
-
-export interface GeopoliticalNews {
-    supporters_of_resistance: Article[];
-    opponents_of_resistance: Article[];
-    countries: CountryNews[];
-}
 
 export interface InoreaderArticle {
   title: string;
@@ -45,6 +33,18 @@ export interface InoreaderArticle {
 
 export interface InoreaderCredentials {
   token?: string;
+  refreshToken?: string;
+  expiresAt?: number;
   clientId: string;
   clientSecret: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  content: string;
+}
+
+export interface CachedData {
+  articles: CategorizedArticles;
+  timestamp: number;
 }

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Article } from '../types';
 import { useLanguage } from '../hooks/useLanguage';
 
@@ -13,25 +13,9 @@ interface ArticleCardProps {
 
 const ArticleCard: React.FC<ArticleCardProps> = ({ article }) => {
   const { t } = useLanguage();
-  const [isNew, setIsNew] = useState(article.isNew);
-
-  useEffect(() => {
-    // This allows the highlight to be re-triggered if the same article component
-    // receives a new `isNew: true` prop in the future, although it's unlikely with the current logic.
-    setIsNew(article.isNew);
-  }, [article.isNew]);
-
-  useEffect(() => {
-    if (isNew) {
-      const timer = setTimeout(() => {
-        setIsNew(false);
-      }, 2000); // Must match the animation duration
-      return () => clearTimeout(timer);
-    }
-  }, [isNew]);
 
   return (
-    <div className={`bg-gray-800/50 border border-gray-700 rounded-lg overflow-hidden flex flex-col h-full transform transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-orange-500/10 ${isNew ? 'animate-highlight-fade-out' : ''}`}>
+    <div className="bg-gray-800/50 border border-gray-700 rounded-lg overflow-hidden flex flex-col h-full transform transition-transform duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-orange-500/10">
       {article.imageUrl && (
         <a href={article.url} target="_blank" rel="noopener noreferrer" className="block aspect-video w-full overflow-hidden">
             <img 
