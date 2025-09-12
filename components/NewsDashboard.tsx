@@ -4,9 +4,9 @@
 */
 
 import React from 'react';
-import ChatPanel from './ChatPanel';
-import ArticleCard from './ArticleCard';
-import { CategorizedArticles, ChatMessage as ChatMessageType } from '../types';
+import ChatPanel from './ChatPanel.js';
+import ArticleCard from './ArticleCard.js';
+import { CategorizedArticles, ChatMessage as ChatMessageType } from '../types.js';
 
 interface NewsDashboardProps {
     articles: CategorizedArticles;

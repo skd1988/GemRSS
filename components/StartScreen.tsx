@@ -6,7 +6,7 @@
 */
 
 import React, { useState, useRef } from 'react';
-import { useLanguage } from '../hooks/useLanguage';
+import { useLanguage } from '../hooks/useLanguage.js';
 
 interface StartScreenProps {
   onSummarize: (urls: string[]) => void;

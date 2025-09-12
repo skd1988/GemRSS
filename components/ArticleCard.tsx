@@ -4,8 +4,8 @@
 */
 
 import React from 'react';
-import { Article } from '../types';
-import { useLanguage } from '../hooks/useLanguage';
+import { Article } from '../types.js';
+import { useLanguage } from '../hooks/useLanguage.js';
 
 interface ArticleCardProps {
   article: Article;

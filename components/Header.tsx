@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import React from 'react';
-import { RssIcon, SettingsIcon } from './icons';
-import LanguageSwitcher from './LanguageSwitcher';
-import { useLanguage } from '../hooks/useLanguage';
+import { RssIcon, SettingsIcon } from './icons.js';
+import LanguageSwitcher from './LanguageSwitcher.js';
+import { useLanguage } from '../hooks/useLanguage.js';
 
 interface HeaderProps {
     onToggleSettings: () => void;

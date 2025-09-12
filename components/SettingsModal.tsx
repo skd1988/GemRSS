@@ -4,9 +4,9 @@
 */
 
 import React, { useState, useEffect } from 'react';
-import { InoreaderCredentials } from '../types';
-import { REDIRECT_URI } from '../App';
-import { useLanguage } from '../hooks/useLanguage';
+import { InoreaderCredentials } from '../types.js';
+import { REDIRECT_URI } from '../App.js';
+import { useLanguage } from '../hooks/useLanguage.js';
 
 interface SettingsModalProps {
   isOpen: boolean;

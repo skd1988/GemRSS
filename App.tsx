@@ -4,13 +4,13 @@
 */
 
 import React, { useState, useEffect } from 'react';
-import Header from './components/Header';
-import Spinner from './components/Spinner';
-import SettingsModal from './components/SettingsModal';
-import NewsDashboard from './components/NewsDashboard';
-import { summarizeAndCategorize, startChatSession } from './services/geminiService';
-import { CategorizedArticles, InoreaderCredentials, ChatMessage, CachedData, InoreaderArticle } from './types';
-import { useLanguage } from './hooks/useLanguage';
+import Header from './components/Header.js';
+import Spinner from './components/Spinner.js';
+import SettingsModal from './components/SettingsModal.js';
+import NewsDashboard from './components/NewsDashboard.js';
+import { summarizeAndCategorize, startChatSession } from './services/geminiService.js';
+import { CategorizedArticles, InoreaderCredentials, ChatMessage, CachedData, InoreaderArticle } from './types.js';
+import { useLanguage } from './hooks/useLanguage.js';
 import type { Chat } from '@google/genai';
 
 export const REDIRECT_URI = window.location.origin + window.location.pathname;

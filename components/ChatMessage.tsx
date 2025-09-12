@@ -6,9 +6,9 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChatMessage as ChatMessageType } from '../types';
-import { RssIcon, CopyIcon, ThumbsUpIcon, ThumbsDownIcon, ShareIcon } from './icons';
-import { useLanguage } from '../hooks/useLanguage';
+import { ChatMessage as ChatMessageType } from '../types.js';
+import { RssIcon, CopyIcon, ThumbsUpIcon, ThumbsDownIcon, ShareIcon } from './icons.js';
+import { useLanguage } from '../hooks/useLanguage.js';
 
 interface ChatMessageProps {
   message: ChatMessageType;

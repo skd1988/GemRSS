@@ -4,8 +4,8 @@
 */
 
 import { GoogleGenAI } from "@google/genai";
-import { fa, TranslationKeys } from '../i18n/locales';
-import { Language } from "../types";
+import { fa, TranslationKeys } from '../i18n/locales.js';
+import { Language } from "../types.js";
 
 const model = 'gemini-2.5-flash';
 

@@ -4,9 +4,9 @@
 */
 
 import React from 'react';
-import { Article } from '../types';
-import ArticleCard from './ArticleCard';
-import ArticleCardSkeleton from './ArticleCardSkeleton';
+import { Article } from '../types.js';
+import ArticleCard from './ArticleCard.js';
+import ArticleCardSkeleton from './ArticleCardSkeleton.js';
 
 interface NewsCarouselProps {
     title: string;

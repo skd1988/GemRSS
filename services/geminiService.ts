@@ -4,7 +4,7 @@
 */
 
 import { GoogleGenAI, Type, Chat } from "@google/genai";
-import { Article, CategorizedArticles, Language } from '../types';
+import { Article, CategorizedArticles, Language } from '../types.js';
 
 const MAX_INPUT_LENGTH = 250000; // Limit input size to prevent request payload errors.
 

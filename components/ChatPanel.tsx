@@ -4,11 +4,11 @@
 */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage as ChatMessageType } from '../types';
-import { useLanguage } from '../hooks/useLanguage';
-import { SendIcon } from './icons';
-import ChatMessage from './ChatMessage';
-import Spinner from './Spinner';
+import { ChatMessage as ChatMessageType } from '../types.js';
+import { useLanguage } from '../hooks/useLanguage.js';
+import { SendIcon } from './icons.js';
+import ChatMessage from './ChatMessage.js';
+import Spinner from './Spinner.js';
 
 interface ChatPanelProps {
   messages: ChatMessageType[];
