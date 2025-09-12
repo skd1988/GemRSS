@@ -11,26 +11,40 @@ import { useLanguage } from '../hooks/useLanguage';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentCredentials: InoreaderCredentials | null;
+  inoreaderCredentials: InoreaderCredentials | null;
+  geminiApiKey: string | null;
   onRedirectUrlSubmit: (url: string) => void;
-  onClearCredentials: () => void;
+  onClearInoreaderCredentials: () => void;
+  onSaveGeminiApiKey: (apiKey: string) => void;
 }
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, currentCredentials, onRedirectUrlSubmit, onClearCredentials }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ 
+    isOpen, 
+    onClose, 
+    inoreaderCredentials, 
+    geminiApiKey,
+    onRedirectUrlSubmit, 
+    onClearInoreaderCredentials,
+    onSaveGeminiApiKey
+}) => {
   const { t } = useLanguage();
+  // Inoreader state
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [redirectUrl, setRedirectUrl] = useState('');
+  // Gemini state
+  const [currentGeminiKey, setCurrentGeminiKey] = useState('');
 
   useEffect(() => {
     if (isOpen) {
-      setClientId(currentCredentials?.clientId || '');
-      setClientSecret(currentCredentials?.clientSecret || '');
+      setClientId(inoreaderCredentials?.clientId || '');
+      setClientSecret(inoreaderCredentials?.clientSecret || '');
+      setCurrentGeminiKey(geminiApiKey || '');
       setAuthUrl(null);
       setRedirectUrl('');
     }
-  }, [currentCredentials, isOpen]);
+  }, [inoreaderCredentials, geminiApiKey, isOpen]);
 
   if (!isOpen) return null;
 
@@ -47,16 +61,23 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, currentC
   const handleCompleteConnection = () => {
     onRedirectUrlSubmit(redirectUrl);
   };
+  
+  const handleSaveGeminiKey = () => {
+    if (currentGeminiKey.trim()) {
+        onSaveGeminiApiKey(currentGeminiKey.trim());
+        onClose();
+    }
+  };
 
-  const handleClear = () => {
-    onClearCredentials();
+  const handleClearInoreader = () => {
+    onClearInoreaderCredentials();
     setAuthUrl(null);
     setRedirectUrl('');
   };
 
-  const isConnected = !!(currentCredentials && currentCredentials.token);
+  const isInoreaderConnected = !!(inoreaderCredentials && inoreaderCredentials.token);
 
-  const renderConnectionForm = () => {
+  const renderInoreaderConnectionForm = () => {
     if (!authUrl) {
         return (
             <div className="space-y-4">
@@ -69,7 +90,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, currentC
                     onChange={(e) => setClientId(e.target.value)}
                     placeholder={t('settingsModal.clientIdPlaceholder')}
                     className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-orange-500 focus:outline-none transition"
-                    disabled={isConnected}
+                    disabled={isInoreaderConnected}
                   />
                 </div>
                 <div>
@@ -81,7 +102,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, currentC
                     onChange={(e) => setClientSecret(e.target.value)}
                     placeholder={t('settingsModal.clientSecretPlaceholder')}
                     className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-orange-500 focus:outline-none transition"
-                    disabled={isConnected}
+                    disabled={isInoreaderConnected}
                   />
                 </div>
                 <div className="pt-2">
@@ -148,45 +169,80 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, currentC
         className="bg-gray-800 border border-gray-700 rounded-xl shadow-2xl p-6 sm:p-8 w-full max-w-lg m-4 text-gray-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center mb-4">
-          <h2 id="settings-title" className="text-2xl font-bold text-white">{t('settingsModal.title')}</h2>
+        <div className="flex justify-between items-center mb-6">
+          <h2 id="settings-title" className="text-2xl font-bold text-white">{t('header.settings')}</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-3xl leading-none">&times;</button>
         </div>
         
-        <div className="mb-6 bg-gray-900/50 p-4 rounded-lg border border-gray-700">
-            <h3 className="font-semibold mb-2 text-gray-200">{t('settingsModal.instructionsTitle')}</h3>
-            <ol className="list-decimal list-inside text-gray-400 space-y-2 text-sm">
-                {t('settingsModal.instructions', {}).split('|').map((item, index) => (
-                    <li key={index} dangerouslySetInnerHTML={{ __html: item }} />
-                ))}
-                <li>
-                    <span dangerouslySetInnerHTML={{ __html: t('settingsModal.instructions')[2]}} />
-                    <input
-                      type="text"
-                      readOnly
-                      value={REDIRECT_URI}
-                      className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded mt-1 p-1 text-xs"
-                      onFocus={(e) => e.target.select()}
-                    />
-                </li>
-                 <li dangerouslySetInnerHTML={{ __html: t('settingsModal.instructions')[3] }} />
-            </ol>
-        </div>
-        
-        {isConnected ? (
-            <div className="pt-2 text-center">
-                <p className="text-green-400 font-semibold mb-3">{t('settingsModal.connectedMessage')}</p>
-                <button
-                    onClick={handleClear}
-                    type="button"
-                    className="w-full bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-lg transition-colors"
-                >
-                    {t('settingsModal.disconnectButton')}
-                </button>
+        {/* Gemini API Key Section */}
+        <div className="mb-6">
+            <h3 className="text-xl font-bold text-white mb-3">{t('settingsModal.geminiTitle')}</h3>
+            <div className="space-y-3">
+                <p className="text-sm text-gray-400" dangerouslySetInnerHTML={{ __html: t('settingsModal.geminiInstructions')}} />
+                <div>
+                  <label htmlFor="gemini-api-key" className="block text-sm font-medium text-gray-300 mb-1">{t('settingsModal.geminiApiKeyLabel')}</label>
+                  <input
+                    id="gemini-api-key"
+                    type="password"
+                    value={currentGeminiKey}
+                    onChange={(e) => setCurrentGeminiKey(e.target.value)}
+                    placeholder={t('settingsModal.geminiApiKeyPlaceholder')}
+                    className="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 focus:ring-2 focus:ring-orange-500 focus:outline-none transition"
+                  />
+                </div>
+                <div>
+                    <button
+                        onClick={handleSaveGeminiKey}
+                        disabled={!currentGeminiKey.trim()}
+                        className="w-full bg-gradient-to-br from-blue-600 to-blue-500 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 ease-in-out shadow-lg shadow-blue-500/20 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-px active:scale-95 disabled:from-gray-600 disabled:to-gray-700 disabled:shadow-none disabled:cursor-not-allowed"
+                    >
+                        {t('settingsModal.saveButton')}
+                    </button>
+                </div>
             </div>
-        ) : (
-            renderConnectionForm()
-        )}
+        </div>
+
+        <div className="w-full h-px bg-gray-700 my-8"></div>
+
+        {/* Inoreader Section */}
+        <div>
+            <h3 className="text-xl font-bold text-white mb-4">{t('settingsModal.title')}</h3>
+            <div className="mb-6 bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                <h4 className="font-semibold mb-2 text-gray-200">{t('settingsModal.instructionsTitle')}</h4>
+                <ol className="list-decimal list-inside text-gray-400 space-y-2 text-sm">
+                    {t('settingsModal.instructions', {}).split('|').map((item, index) => {
+                        if (index === 2) return ( // Special handling for the Redirect URI instruction
+                             <li key={index}>
+                                <span dangerouslySetInnerHTML={{ __html: item }} />
+                                <input
+                                  type="text"
+                                  readOnly
+                                  value={REDIRECT_URI}
+                                  className="w-full bg-gray-700 text-gray-200 border border-gray-600 rounded mt-1 p-1 text-xs"
+                                  onFocus={(e) => e.target.select()}
+                                />
+                            </li>
+                        );
+                        return <li key={index} dangerouslySetInnerHTML={{ __html: item }} />
+                    })}
+                </ol>
+            </div>
+            
+            {isInoreaderConnected ? (
+                <div className="pt-2 text-center">
+                    <p className="text-green-400 font-semibold mb-3">{t('settingsModal.connectedMessage')}</p>
+                    <button
+                        onClick={handleClearInoreader}
+                        type="button"
+                        className="w-full bg-gray-600 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+                    >
+                        {t('settingsModal.disconnectButton')}
+                    </button>
+                </div>
+            ) : (
+                renderInoreaderConnectionForm()
+            )}
+        </div>
       </div>
     </div>
   );

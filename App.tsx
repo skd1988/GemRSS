@@ -8,12 +8,12 @@ import Header from './components/Header';
 import Spinner from './components/Spinner';
 import SettingsModal from './components/SettingsModal';
 import NewsDashboard from './components/NewsDashboard';
-import { summarizeAndCategorize, startChatSession, sendMessageToChat } from './services/geminiService';
-// FIX: Import `InoreaderArticle` type.
+import { summarizeAndCategorize, startChatSession } from './services/geminiService';
 import { CategorizedArticles, InoreaderCredentials, ChatMessage, CachedData, InoreaderArticle } from './types';
 import { useLanguage } from './hooks/useLanguage';
+import type { Chat } from '@google/genai';
 
-export const REDIRECT_URI = 'http://localhost:8999/callback';
+export const REDIRECT_URI = window.location.origin + window.location.pathname;
 
 // Predefined list of RSS feeds
 const PREDEFINED_FEEDS = [
@@ -37,12 +37,19 @@ function App() {
   const [articles, setArticles] = useState<CategorizedArticles | null>(null);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [inoreaderCredentials, setInoreaderCredentials] = useState<InoreaderCredentials | null>(null);
+  const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatSession, setChatSession] = useState<Chat | null>(null);
 
   const handleSaveInoreaderCredentials = (credentials: InoreaderCredentials) => {
     localStorage.setItem('inoreader_credentials', JSON.stringify(credentials));
     setInoreaderCredentials(credentials);
+  };
+  
+  const handleSaveGeminiApiKey = (apiKey: string) => {
+    localStorage.setItem('gemini_api_key', apiKey);
+    setGeminiApiKey(apiKey);
   };
 
   const exchangeCodeForToken = async (code: string) => {
@@ -236,6 +243,10 @@ function App() {
     setLoadingMessage(t('app.loadingMessage'));
     
     try {
+      if (!geminiApiKey) {
+        throw new Error(t('app.geminiKeyNeeded'));
+      }
+      
       let currentCreds = inoreaderCredentials;
       if (!currentCreds || !currentCreds.token) {
         throw new Error(t('app.inoreaderCredsNeeded'));
@@ -283,15 +294,16 @@ function App() {
         throw new Error(t('app.emptyFeedError'));
       }
       
-      const categorizedArticles = await summarizeAndCategorize(allFeedsContent, language);
+      const categorizedArticles = await summarizeAndCategorize(geminiApiKey, allFeedsContent, language);
       setArticles(categorizedArticles);
       
       const cacheData: CachedData = { articles: categorizedArticles, timestamp: Date.now() };
       localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
       
       setIsChatLoading(true);
-      const initialBotMessage = await startChatSession(categorizedArticles, language);
-      setChatHistory([{ role: 'model', content: initialBotMessage }]);
+      const { chat, initialMessage } = await startChatSession(geminiApiKey, categorizedArticles, language);
+      setChatSession(chat);
+      setChatHistory([{ role: 'model', content: initialMessage }]);
 
     } catch (e) {
       console.error(e);
@@ -305,6 +317,11 @@ function App() {
   }
 
   useEffect(() => {
+    const savedApiKey = localStorage.getItem('gemini_api_key');
+    if (savedApiKey) {
+      setGeminiApiKey(savedApiKey);
+    }
+    
     const savedCreds = localStorage.getItem('inoreader_credentials');
     if (savedCreds) {
       try {
@@ -334,8 +351,9 @@ function App() {
   }, [t]);
 
   useEffect(() => {
-    if (!inoreaderCredentials) {
-        setLoadingMessage(t('app.inoreaderCredsNeeded'));
+    if (!geminiApiKey || !inoreaderCredentials) {
+        if (!geminiApiKey) setLoadingMessage(t('app.geminiKeyNeeded'));
+        else if (!inoreaderCredentials) setLoadingMessage(t('app.inoreaderCredsNeeded'));
         setIsLoading(false); // Stop loading to show the message
         return;
     }
@@ -349,9 +367,10 @@ function App() {
           setArticles(cachedData.articles);
           setIsLoading(false);
           setIsChatLoading(true);
-          startChatSession(cachedData.articles, language)
-            .then(initialBotMessage => {
-                setChatHistory([{ role: 'model', content: initialBotMessage }]);
+          startChatSession(geminiApiKey, cachedData.articles, language)
+            .then(({ chat, initialMessage }) => {
+                setChatSession(chat);
+                setChatHistory([{ role: 'model', content: initialMessage }]);
             })
             .catch(e => setError(t('app.chatError', { error: e.message })))
             .finally(() => setIsChatLoading(false));
@@ -365,16 +384,22 @@ function App() {
 
     // No fresh cache, fetch new data
     loadAndSummarizeNews();
-  }, [inoreaderCredentials, language, t]);
+  }, [geminiApiKey, inoreaderCredentials, language, t]);
 
   const handleSendMessage = async (message: string) => {
+    if (!chatSession) {
+      const errorBotMessage: ChatMessage = { role: 'model', content: t('app.chatError', { error: "Chat session not initialized." }) };
+      setChatHistory(prev => [...prev, errorBotMessage]);
+      return;
+    }
+
     const newUserMessage: ChatMessage = { role: 'user', content: message };
     setChatHistory(prev => [...prev, newUserMessage]);
     setIsChatLoading(true);
 
     try {
-      const botResponse = await sendMessageToChat(message);
-      const newBotMessage: ChatMessage = { role: 'model', content: botResponse };
+      const response = await chatSession.sendMessage({ message });
+      const newBotMessage: ChatMessage = { role: 'model', content: response.text };
       setChatHistory(prev => [...prev, newBotMessage]);
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
@@ -404,6 +429,15 @@ function App() {
       );
     }
 
+    if (!geminiApiKey) {
+       return (
+        <div className="text-center mt-12 bg-yellow-900/50 border border-yellow-700 text-yellow-300 p-6 rounded-lg max-w-2xl mx-auto">
+          <h2 className="text-xl font-bold mb-2">{t('app.geminiKeyNeededTitle')}</h2>
+          <p>{t('app.geminiKeyNeeded')}</p>
+        </div>
+      );
+    }
+
     if (!inoreaderCredentials) {
        return (
         <div className="text-center mt-12 bg-yellow-900/50 border border-yellow-700 text-yellow-300 p-6 rounded-lg max-w-2xl mx-auto">
@@ -429,9 +463,11 @@ function App() {
       <SettingsModal 
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
-        currentCredentials={inoreaderCredentials}
+        inoreaderCredentials={inoreaderCredentials}
+        geminiApiKey={geminiApiKey}
         onRedirectUrlSubmit={handleRedirectUrlSubmit}
-        onClearCredentials={handleClearInoreaderCredentials}
+        onClearInoreaderCredentials={handleClearInoreaderCredentials}
+        onSaveGeminiApiKey={handleSaveGeminiApiKey}
       />
       <main className="container mx-auto px-4 py-8">
         {renderContent()}

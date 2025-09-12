@@ -21,6 +21,8 @@ export const fa = {
     inoreaderCredsError: "احراز هویت ناموفق بود: اعتبارنامه‌های موقت یافت نشد. لطفاً دوباره لینک احراز هویت را ایجاد کنید.",
     inoreaderCredsNeededTitle: "اتصال به Inoreader الزامی است",
     inoreaderCredsNeeded: "برای استفاده از این برنامه، لطفاً ابتدا اطلاعات کاربری Inoreader خود را در بخش تنظیمات وارد کنید.",
+    geminiKeyNeededTitle: "کلید API جمینای الزامی است",
+    geminiKeyNeeded: "برای استفاده از این برنامه، لطفاً کلید API جمینای خود را در بخش تنظیمات وارد کنید.",
     refreshTokenMessage: "در حال تازه‌سازی اتصال به Inoreader...",
     sessionExpired: "جلسه شما منقضی شده است. لطفاً دوباره متصل شوید.",
     refreshTokenError: "امکان تازه‌سازی اتصال وجود نداشت: {error}. لطفاً دوباره متصل شوید.",
@@ -29,7 +31,12 @@ export const fa = {
     readMore: "ادامه مطلب",
   },
   settingsModal: {
-    title: "تنظیمات Inoreader",
+    title: "اتصال به Inoreader",
+    geminiTitle: "کلید API جمینای",
+    geminiInstructions: 'برای استفاده از قابلیت‌های هوش مصنوعی، لطفاً یک کلید API از <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" class="text-orange-400 hover:underline">Google AI Studio</a> دریافت کرده و در کادر زیر وارد کنید.',
+    geminiApiKeyLabel: "کلید API جمینای",
+    geminiApiKeyPlaceholder: "کلید API خود را اینجا وارد کنید",
+    saveButton: "ذخیره کلید",
     instructionsTitle: "چگونه اطلاعات را دریافت کنیم؟",
     instructions: [
         'به بخش <a href="https://www.inoreader.com/preferences/developer" target="_blank" rel="noopener noreferrer" class="text-orange-400 hover:underline">Developers</a> در تنظیمات Inoreader بروید.',

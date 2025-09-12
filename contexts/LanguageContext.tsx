@@ -54,10 +54,18 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
       setTranslations(JSON.parse(cachedTranslations));
       return;
     }
+    
+    const apiKey = localStorage.getItem('gemini_api_key');
+    if (!apiKey) {
+        console.error("Gemini API key not found for translation service.");
+        // Fallback to Farsi if API key is not available
+        setLanguage('fa');
+        return;
+    }
 
     setIsLoading(true);
     try {
-      const fetchedTranslations = await translateStrings(lang);
+      const fetchedTranslations = await translateStrings(apiKey, lang);
       setTranslations(fetchedTranslations);
       localStorage.setItem(`translations-${lang}`, JSON.stringify(fetchedTranslations));
     } catch (error) {

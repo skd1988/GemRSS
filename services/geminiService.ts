@@ -6,9 +6,6 @@
 import { GoogleGenAI, Type, Chat } from "@google/genai";
 import { Article, CategorizedArticles, Language } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
-let chat: Chat | null = null;
-
 const MAX_INPUT_LENGTH = 250000; // Limit input size to prevent request payload errors.
 
 const langInstructions: Record<Language, { name: string, nativeName: string }> = {
@@ -19,11 +16,13 @@ const langInstructions: Record<Language, { name: string, nativeName: string }> =
 
 /**
  * Summarizes and categorizes articles from an RSS feed.
+ * @param apiKey The Google Gemini API key.
  * @param rssContent The string content of the RSS feed.
  * @param language The target language for the output.
  * @returns A promise that resolves to an object with articles grouped by category.
  */
-export async function summarizeAndCategorize(rssContent: string, language: Language): Promise<CategorizedArticles> {
+export async function summarizeAndCategorize(apiKey: string, rssContent: string, language: Language): Promise<CategorizedArticles> {
+  const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-2.5-flash';
 
   const truncatedContent = rssContent.length > MAX_INPUT_LENGTH
@@ -93,7 +92,8 @@ function formatArticlesForContext(articles: CategorizedArticles): string {
   return context;
 }
 
-export async function startChatSession(articles: CategorizedArticles, language: Language): Promise<string> {
+export async function startChatSession(apiKey: string, articles: CategorizedArticles, language: Language): Promise<{ chat: Chat, initialMessage: string }> {
+  const ai = new GoogleGenAI({ apiKey });
   const model = 'gemini-2.5-flash';
   const { name: langName } = langInstructions[language];
   const articlesContext = formatArticlesForContext(articles);
@@ -105,7 +105,7 @@ export async function startChatSession(articles: CategorizedArticles, language: 
 - Keep your answers concise and to the point.
 - All your responses must be in ${langName}.`;
 
-  chat = ai.chats.create({
+  const chat = ai.chats.create({
     model,
     config: {
       systemInstruction,
@@ -120,13 +120,5 @@ export async function startChatSession(articles: CategorizedArticles, language: 
     ? "سلام! من مقالات را خوانده‌ام. چگونه می‌توانم به شما در درک اخبار امروز کمک کنم؟" 
     : "Hello! I've read the articles. How can I help you understand today's news?";
   
-  return greetingMessage;
-}
-
-export async function sendMessageToChat(message: string): Promise<string> {
-    if (!chat) {
-        throw new Error("Chat session not started. Please summarize feeds first.");
-    }
-    const response = await chat.sendMessage({ message });
-    return response.text;
+  return { chat, initialMessage: greetingMessage };
 }

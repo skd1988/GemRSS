@@ -7,7 +7,6 @@ import { GoogleGenAI } from "@google/genai";
 import { fa, TranslationKeys } from '../i18n/locales';
 import { Language } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 const model = 'gemini-2.5-flash';
 
 const languageMap: Record<Language, string> = {
@@ -16,11 +15,12 @@ const languageMap: Record<Language, string> = {
     fa: 'Farsi',
 };
 
-export async function translateStrings(targetLanguage: Language): Promise<TranslationKeys> {
+export async function translateStrings(apiKey: string, targetLanguage: Language): Promise<TranslationKeys> {
     if (targetLanguage === 'fa') {
         return fa;
     }
 
+    const ai = new GoogleGenAI({ apiKey });
     const targetLangName = languageMap[targetLanguage];
 
     const prompt = `Translate the string values in the following JSON object from Farsi to ${targetLangName}. 
