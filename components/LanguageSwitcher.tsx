@@ -4,9 +4,9 @@
 */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { useLanguage } from '../hooks/useLanguage.js';
-import { LANGUAGES } from '../types.js';
-import Spinner from './Spinner.js';
+import { useLanguage } from '../hooks/useLanguage.ts';
+import { LANGUAGES } from '../types.ts';
+import Spinner from './Spinner.tsx';
 
 const LanguageSwitcher: React.FC = () => {
     const { language, setLanguage, isLoading } = useLanguage();

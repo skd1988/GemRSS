@@ -4,9 +4,9 @@
 */
 
 import React, { createContext, useState, useEffect, ReactNode, useCallback } from 'react';
-import { fa, TranslationKeys } from '../i18n/locales.js';
-import { Language, LANGUAGES } from '../types.js';
-import { translateStrings } from '../services/translationService.js';
+import { fa, TranslationKeys } from '../i18n/locales.ts';
+import { Language, LANGUAGES } from '../types.ts';
+import { translateStrings } from '../services/translationService.ts';
 import { get } from 'lodash-es';
 
 interface LanguageContextType {
